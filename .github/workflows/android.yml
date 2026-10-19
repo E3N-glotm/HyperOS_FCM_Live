@@ -44,11 +44,13 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v7
         with:
+          name: HyperOS-FCM-Live-E3N-release-apk
           path: HyperFCMLive/build/outputs/apk/release/*.apk
           archive: true
 
       - name: Upload debug artifact
         uses: actions/upload-artifact@v7
         with:
+          name: HyperOS-FCM-Live-E3N-debug-apk
           path: HyperFCMLive/build/outputs/apk/debug/*.apk
           archive: true
