@@ -45,10 +45,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: HyperFCMLive/build/outputs/apk/release/*.apk
-          archive: false
+          archive: true
 
       - name: Upload debug artifact
         uses: actions/upload-artifact@v7
         with:
           path: HyperFCMLive/build/outputs/apk/debug/*.apk
-          archive: false
+          archive: true
