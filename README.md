@@ -20,6 +20,9 @@ Fork of [Howard20181/HyperOS_FCM_Live](https://github.com/Howard20181/HyperOS_FC
 
 ### 安装
 
+当前 v1.4.1 发布附件为**实机验证过的 Debug 签名 APK**，不是长期固定签名的正式构建。不同 GitHub Actions 任务生成的 Debug 证书可能不同，因此未来更新若显示签名不匹配，不能强制覆盖；先禁用旧模块并备份作用域，再卸载旧版本后安装新包。固定签名方案尚未完成。
+
+
 到 [Releases](https://github.com/E3N-glotm/HyperOS_FCM_Live/releases) 下载 E3N APK，安装后在 **LSPosed → 模块** 启用 **HyperOS FCM Live · E3N OS4**，作用域为「系统框架」和「省电与性能 / PowerKeeper」（`com.miui.powerkeeper`），然后重启。
 
 使用独立包名 `io.github.e3n.hyperos.fcmlive`，与原作者版本并存。**不要同时启用两个版本**，否则可能重复 Hook。出现不稳定时，在 LSPosed 中关闭此测试模块并重启；必要时通过 LSPosed 安全模式恢复。
@@ -33,6 +36,8 @@ Fork of [Howard20181/HyperOS_FCM_Live](https://github.com/Howard20181/HyperOS_FC
 LSPosed compatibility fork for **HyperOS 4 / Android 17**, integrating upstream PR #30 for the `PowerKeeper 4.2.00` `GmsObserver.updateFrameworkGmsNetStatus(boolean)` API. Adds per-method optional Greeze hooking, renamed ListAppsManager field fallbacks, FCM-only broadcast exemption, and immutable whitelist safety.
 
 Runtime hook registration was verified on Xiaomi `pudding` / `OS4.0.4.0.XPCCNXM` / Android 17 / LSPosed API 102. End-to-end message-delivery latency has **not** been independently verified.
+
+The current v1.4.1 asset is a device-tested **debug-signed APK**, not a reproducibly signed production artifact. Future builds may have different signing certificates and require uninstall/reinstall rather than in-place upgrading. Never force an incompatible signature update.
 
 The E3N package uses a separate application ID so it can coexist with the original signed module. **Keep the original module disabled** and enable this version in LSPosed with scopes **System Framework** and **com.miui.powerkeeper**, then reboot. Disable the fork and reboot to restore original behavior.
 
