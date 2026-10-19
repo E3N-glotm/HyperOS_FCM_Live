@@ -23,7 +23,7 @@ import io.github.libxposed.api.XposedModule;
 
 @SuppressLint("PrivateApi")
 public class Hooker extends XposedModule {
-    private static final String TAG = "HyperGreeze";
+    private static final String TAG = "HyperFCMLive-E3N";
     private static final List<String> CN_DEFER_BROADCAST = Arrays.asList("com.google.android.intent.action.GCM_RECONNECT", "com.google.android.gcm.DISCONNECTED", "com.google.android.gcm.CONNECTED", "com.google.android.gms.gcm.HEARTBEAT_ALARM");
     private static final String ACTION_REMOTE_INTENT = "com.google.android.c2dm.intent.RECEIVE";
     private static final String GMS_PACKAGE_NAME = "com.google.android.gms";
@@ -245,8 +245,15 @@ public class Hooker extends XposedModule {
         var DomesticPolicyManagerClass = classLoader.loadClass("com.miui.server.greeze.DomesticPolicyManager");
         // boolean deferBroadcast(String action)
         var deferBroadcastMethod = DomesticPolicyManagerClass.getDeclaredMethod("deferBroadcast", String.class);
-        Utils.evaluate(hook(deferBroadcastMethod), h -> setHookId(h, deferBroadcastMethod.getName())
-        ).intercept(chain -> false);
+        Utils.evaluate(hook(deferBroadcastMethod), h -> setHookId(h, "DomesticPolicyManager.deferBroadcast"))
+                .intercept(chain -> {
+                    if (chain.getArg(0) instanceof String action
+                            && (CN_DEFER_BROADCAST.contains(action) || ACTION_REMOTE_INTENT.equals(action))) {
+                        return false;
+                    }
+                    return chain.proceed();
+                });
+        log(Log.INFO, TAG, "Hooked DomesticPolicyManager.deferBroadcast (FCM only)");
         deoptimize(deferBroadcastMethod);
     }
 
@@ -264,7 +271,7 @@ public class Hooker extends XposedModule {
         if (black != null) {
             final java.lang.reflect.Field field = black;
             for (var constructor : lists.getDeclaredConstructors()) {
-                Utils.evaluate(hook(constructor), h -> setHookId(h, "ListAppsManager.constructor"))
+                Utils.evaluate(hook(constructor), h -> setHookId(h, "ListAppsManager.constructor." + constructor.toGenericString()))
                         .intercept(chain -> {
                             try {
                                 return chain.proceed();
@@ -356,10 +363,16 @@ public class Hooker extends XposedModule {
         ).intercept(chain -> {
             var result = chain.proceed();
             if (chain.getArg(0) instanceof Integer flags && (flags & 1) != 0) {
-                if (result instanceof List<?>) {
-                    var whiteList = (List<String>) result;
-                    whiteList.add(GMS_PACKAGE_NAME);
-                    whiteList.add(GMS_PERSISTENT_PROCESS_NAME);
+                if (result instanceof List<?> rawList) {
+                    // Avoid throwing UnsupportedOperationException for immutable OEM lists.
+                    java.util.ArrayList<String> adjusted = new java.util.ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof String entry) adjusted.add(entry);
+                    }
+                    if (!adjusted.contains(GMS_PACKAGE_NAME)) adjusted.add(GMS_PACKAGE_NAME);
+                    if (!adjusted.contains(GMS_PERSISTENT_PROCESS_NAME))
+                        adjusted.add(GMS_PERSISTENT_PROCESS_NAME);
+                    return adjusted;
                 }
             }
             return result;
