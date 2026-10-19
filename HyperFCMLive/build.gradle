@@ -6,11 +6,11 @@ android {
     compileSdk 37
 
     defaultConfig {
-        applicationId namespace
+        applicationId 'io.github.e3n.hyperos.fcmlive'
         minSdkVersion 27
         targetSdkVersion 37
         versionCode rootProject.ext.commitCount
-        versionName "1.4.0"
+        versionName "1.4.1-e3n-os4"
     }
 
     Properties localProperties = new Properties()
