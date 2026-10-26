@@ -1,44 +1,31 @@
-# HyperOS FCM Live · E3N HyperOS 4 Compatibility
+# HyperOS FCM Live · HyperOS 4 FCM 推送兼容修复
 
-Fork of [Howard20181/HyperOS_FCM_Live](https://github.com/Howard20181/HyperOS_FCM_Live), licensed under GPL-3.0.
+**语言：简体中文（当前） | [English](README_EN.md)**
 
-## 中文
+基于 [Howard20181/HyperOS_FCM_Live](https://github.com/Howard20181/HyperOS_FCM_Live) 的 LSPosed 兼容分支，面向 HyperOS 4 / Android 17 上 Google FCM 广播、PowerKeeper 和 Greeze API 变化。遵循原项目 GPL-3.0 协议。
 
-适配 **HyperOS 4 / Android 17** 的 LSPosed 模块，用于减少 HyperOS 对 Google FCM 重连和推送广播的限制。基于上游 [PR #30](https://github.com/Howard20181/HyperOS_FCM_Live/pull/30) 的 PowerKeeper 4.2.00 修复，并新增 Greeze 和 ListAppsManager 兼容处理。
+**E3N 版本：v1.4.1** · [下载 Release](https://github.com/E3N-glotm/HyperOS_FCM_Live/releases) · [提交上游的兼容修复 PR](https://github.com/Howard20181/HyperOS_FCM_Live/pull/31)
 
-### 实机验证
+## 修复内容
 
-在 Xiaomi `pudding`、`OS4.0.4.0.XPCCNXM`、Android 17、PowerKeeper **4.2.00**、LSPosed **2.2.1/API 102** 上确认：
+- 在系统实现发生变化时，独立探测 Greeze Hook 方法与 ListAppsManager 字段，缺失的旧接口安全跳过。
+- 兼容 HyperOS 4 的 `GmsObserver.updateFrameworkGmsNetStatus(boolean)`。
+- 对 `DomesticPolicyManager.deferBroadcast` **只放行与 FCM 相关的广播**，不关闭无关应用的全部延迟广播机制。
+- 避免修改不可变白名单导致异常；记录实际 Hook 注册信息供 LSPosed 排错。
 
-- `GreezeManagerService.isAllowBroadcast`、`deferBroadcastForMiui`、`triggerGMSLimitAction`：Hook 注册成功
-- `ListAppsManager.SYSTEM_BLACK_LIST` 与 `USE_DATA_WHITE_LIST`：Hook 注册成功
-- `DomesticPolicyManager.deferBroadcast`：仅对 FCM 相关广播放行，其他广播执行原逻辑
-- `GmsObserver.updateFrameworkGmsNetStatus(boolean)`：在新版 PowerKeeper 中 Hook 注册成功
-- 已被 HyperOS 4 移除的旧接口：逐项跳过，不影响其他 Hook 注册
+## 实机验证
 
-**注意：** 以上为实机注册、冷启动、进程稳定性和 Google 长连接的检查，不代表已验证所有 App 的消息送达延迟。HyperOS 其他版本可能不兼容。
+曾在 Xiaomi `pudding`、`OS4.0.4.0.XPCCNXM`、Android 17、PowerKeeper `4.2.00`、LSPosed `2.2.1/API 102` 上确认 Hook 注册、冷启动无相关崩溃，GMS `GcmService` 有效连接。**这不等于已单独完成数小时锁屏的端到端微信消息延迟测试**。
 
-### 安装
+## 安装与使用
 
-当前 v1.4.1 发布附件为**实机验证过的 Debug 签名 APK**，不是长期固定签名的正式构建。不同 GitHub Actions 任务生成的 Debug 证书可能不同，因此未来更新若显示签名不匹配，不能强制覆盖；先禁用旧模块并备份作用域，再卸载旧版本后安装新包。固定签名方案尚未完成。
+1. 从 [Releases](https://github.com/E3N-glotm/HyperOS_FCM_Live/releases) 下载 APK。
+2. 安装后，在 LSPosed 启用本 Fork，作用域选择 **系统框架** 和 **PowerKeeper（`com.miui.powerkeeper`）**，再重启。
+3. 使用独立包名 `io.github.e3n.hyperos.fcmlive`。**不要与上游原版同时启用**，否则可能重复 Hook。
+4. 异常时先停用本模块并重启；必要时使用 LSPosed 安全模式恢复。
 
+> 当前附件为实机验证的 **Debug 签名 APK**。未来不同构建证书可能不匹配，不能保证直接覆盖升级。不要强制覆盖签名不一致的 APK；更换时需要先备份作用域与配置。
 
-到 [Releases](https://github.com/E3N-glotm/HyperOS_FCM_Live/releases) 下载 E3N APK，安装后在 **LSPosed → 模块** 启用 **HyperOS FCM Live · E3N OS4**，作用域为「系统框架」和「省电与性能 / PowerKeeper」（`com.miui.powerkeeper`），然后重启。
+## 限制
 
-使用独立包名 `io.github.e3n.hyperos.fcmlive`，与原作者版本并存。**不要同时启用两个版本**，否则可能重复 Hook。出现不稳定时，在 LSPosed 中关闭此测试模块并重启；必要时通过 LSPosed 安全模式恢复。
-
-该模块可能增加后台唤醒和耗电；不会替代 FCM Token 注册修复、Google Play 服务的网络连接或 Millet Guard 的独立连接管理。
-
-完整的修改内容、验证边界和原项目作者致谢见 [兼容性说明](docs/HYPEROS4_COMPAT.md)。
-
-## English
-
-LSPosed compatibility fork for **HyperOS 4 / Android 17**, integrating upstream PR #30 for the `PowerKeeper 4.2.00` `GmsObserver.updateFrameworkGmsNetStatus(boolean)` API. Adds per-method optional Greeze hooking, renamed ListAppsManager field fallbacks, FCM-only broadcast exemption, and immutable whitelist safety.
-
-Runtime hook registration was verified on Xiaomi `pudding` / `OS4.0.4.0.XPCCNXM` / Android 17 / LSPosed API 102. End-to-end message-delivery latency has **not** been independently verified.
-
-The current v1.4.1 asset is a device-tested **debug-signed APK**, not a reproducibly signed production artifact. Future builds may have different signing certificates and require uninstall/reinstall rather than in-place upgrading. Never force an incompatible signature update.
-
-The E3N package uses a separate application ID so it can coexist with the original signed module. **Keep the original module disabled** and enable this version in LSPosed with scopes **System Framework** and **com.miui.powerkeeper**, then reboot. Disable the fork and reboot to restore original behavior.
-
-Original author: [Howard20181](https://github.com/Howard20181). HyperOS 4 GmsObserver adaptation credit: [793354162, upstream PR #30](https://github.com/Howard20181/HyperOS_FCM_Live/pull/30). This derivative remains licensed under GPL-3.0.
+可能增加后台唤醒与耗电；不替代 Google Play 服务本身的联网、Token 注册或 Millet Guard 的管理。对其他 HyperOS 版本采用实际接口匹配，未经实机验证的组合仍有兼容风险。具体差异与原作者致谢见 [兼容性说明](docs/HYPEROS4_COMPAT.md)。
