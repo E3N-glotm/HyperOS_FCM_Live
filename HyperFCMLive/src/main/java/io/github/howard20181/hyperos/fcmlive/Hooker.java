@@ -552,24 +552,44 @@ public class Hooker extends XposedModule {
     }
 
     private void hookGlobalFeatureConfigureHelper(ClassLoader classLoader)
-            throws ClassNotFoundException, NoSuchMethodException {
-        var GlobalFeatureConfigureHelperClass = classLoader.loadClass("com.miui.powerkeeper.provider.GlobalFeatureConfigureHelper");
-        var getDozeWhiteListAppsMethod = GlobalFeatureConfigureHelperClass.getDeclaredMethod("getDozeWhiteListApps", Bundle.class);
-        Utils.evaluate(hook(getDozeWhiteListAppsMethod), h -> setHookId(h, getDozeWhiteListAppsMethod.getName())
-        ).intercept(chain -> {
-            var result = chain.proceed();
-            if (result instanceof List<?>) {
-                List<?> whiteList = (List<?>) result;
-                if (!whiteList.contains(GMS_PACKAGE_NAME)) {
-                    // OEMs may return an immutable/cached collection. Avoid
-                    // mutating PowerKeeper-owned state or throwing from Hook.
-                    ArrayList<Object> copy = new ArrayList<>(whiteList);
-                    copy.add(GMS_PACKAGE_NAME);
-                    return copy;
-                }
+            throws ClassNotFoundException {
+        Class<?> helper = classLoader.loadClass(
+                "com.miui.powerkeeper.provider.GlobalFeatureConfigureHelper");
+        int installed = 0;
+        // HyperOS variants expose Bundle, Context or both overloads.
+        // Probe the actual signatures: never rely on a ROM version string.
+        for (Method method : helper.getDeclaredMethods()) {
+            if (!"getDozeWhiteListApps".equals(method.getName()) ||
+                    method.getParameterCount() != 1 ||
+                    !List.class.isAssignableFrom(method.getReturnType())) {
+                continue;
             }
-            return result;
-        });
+            Class<?> parameter = method.getParameterTypes()[0];
+            if (parameter != Bundle.class && parameter != Context.class) {
+                continue;
+            }
+            String id = "getDozeWhiteListApps." + parameter.getName();
+            Utils.evaluate(hook(method), h -> setHookId(h, id)).intercept(chain -> {
+                Object result = chain.proceed();
+                if (!(result instanceof List<?>)) return result;
+                List<?> whiteList = (List<?>) result;
+                if (whiteList.contains(GMS_PACKAGE_NAME)) return result;
+                // Older ROMs may return immutable or internally cached lists.
+                // Return a fresh copy rather than mutating OEM shared state.
+                ArrayList<Object> copy = new ArrayList<Object>(whiteList.size() + 1);
+                copy.addAll(whiteList);
+                copy.add(GMS_PACKAGE_NAME);
+                return copy;
+            });
+            deoptimize(method);
+            installed++;
+        }
+        if (installed == 0) {
+            log(Log.INFO, TAG,
+                    "No supported PowerKeeper Doze whitelist overload; retaining OEM behavior");
+        } else {
+            log(Log.INFO, TAG, "PowerKeeper Doze whitelist overloads hooked: " + installed);
+        }
     }
 
     private static PowerExemptionManager powerExemptionManager = null;
