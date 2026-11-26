@@ -17,6 +17,7 @@ import java.io.FileInputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -558,9 +559,13 @@ public class Hooker extends XposedModule {
         ).intercept(chain -> {
             var result = chain.proceed();
             if (result instanceof List<?>) {
-                var whiteList = (List<String>) result;
+                List<?> whiteList = (List<?>) result;
                 if (!whiteList.contains(GMS_PACKAGE_NAME)) {
-                    whiteList.add(GMS_PACKAGE_NAME);
+                    // OEMs may return an immutable/cached collection. Avoid
+                    // mutating PowerKeeper-owned state or throwing from Hook.
+                    ArrayList<Object> copy = new ArrayList<>(whiteList);
+                    copy.add(GMS_PACKAGE_NAME);
+                    return copy;
                 }
             }
             return result;
