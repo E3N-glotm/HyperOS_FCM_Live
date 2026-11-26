@@ -13,7 +13,10 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
+import java.io.FileInputStream;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -30,6 +33,11 @@ public class Hooker extends XposedModule {
     private static final String GMS_PERSISTENT_PROCESS_NAME = "com.google.android.gms.persistent";
     private PackageClassLoader param;
     private final Set<String> hookedIds = new HashSet<>();
+    // Audited OEM PowerKeeper 4.2.00 APK; unknown APKs fail closed.
+    private static final String VERIFIED_GMS_DNS_APK_SHA256 =
+            "164f2b6271eef11afaf5c97984011f01329173099accf69bada3b815a26cbd44";
+    private volatile int validatedDnsGmsUid = -1;
+    private volatile boolean dnsIdentityChecked;
 
     private record PackageClassLoader(String packageName, ClassLoader classLoader) {
     }
@@ -109,6 +117,11 @@ public class Hooker extends XposedModule {
                 hookGmsObserver(classLoader);
             } catch (Exception e) {
                 log(Log.ERROR, TAG, "Failed to hook GmsObserver", e);
+            }
+            try {
+                hookScopedGmsDnsBlocker(classLoader);
+            } catch (Exception e) {
+                log(Log.ERROR, TAG, "GMS DNS blocker hook unavailable", e);
             }
             try {
                 hookGlobalFeatureConfigureHelper(classLoader);
@@ -449,6 +462,79 @@ public class Hooker extends XposedModule {
         } catch (ClassNotFoundException ignored) {
             log(Log.INFO, TAG, "GmsObserver class unavailable");
         }
+    }
+
+    // No fixed GMS UID and no blanket DNS/firewall exception. This bytecode
+    // fingerprint was independently checked on the installed OEM APK.
+    private int verifiedDnsGmsUid() {
+        if (dnsIdentityChecked) return validatedDnsGmsUid;
+        synchronized (this) {
+            if (dnsIdentityChecked) return validatedDnsGmsUid;
+            boolean completed = false;
+            try {
+                Class<?> thread = Class.forName("android.app.ActivityThread");
+                Object app = thread.getDeclaredMethod("currentApplication").invoke(null);
+                if (!(app instanceof Context)) return -1; // attach not complete
+                Context context = (Context) app;
+                if (!"com.miui.powerkeeper".equals(context.getPackageName())) return -1;
+                String path = context.getApplicationInfo().sourceDir;
+                if (path == null || !path.endsWith(".apk")) return -1;
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] buffer = new byte[32768];
+                try (FileInputStream input = new FileInputStream(path)) {
+                    int n;
+                    while ((n = input.read(buffer)) != -1) digest.update(buffer, 0, n);
+                }
+                StringBuilder hex = new StringBuilder(64);
+                for (byte b : digest.digest()) {
+                    hex.append(Character.forDigit((b >>> 4) & 15, 16));
+                    hex.append(Character.forDigit(b & 15, 16));
+                }
+                if (VERIFIED_GMS_DNS_APK_SHA256.equals(hex.toString())) {
+                    int uid = context.getPackageManager().getPackageUid(GMS_PACKAGE_NAME, 0);
+                    if (uid >= 10000 && uid < 99000) validatedDnsGmsUid = uid;
+                }
+                completed = true;
+            } catch (Throwable unavailable) {
+                // Fail closed for unknown OEM builds, unreadable APKs or UID.
+            } finally {
+                if (completed) dnsIdentityChecked = true;
+            }
+            return validatedDnsGmsUid;
+        }
+    }
+
+    // PowerKeeper 4.2.00: setGmsDnsBlockerState(uid,true) invokes
+    // dnsproxyd setuiddnsrule uid deny; false invokes allow.
+    // Only a verified matching OEM APK and current GMS UID may be changed.
+    private void hookScopedGmsDnsBlocker(ClassLoader loader) throws ClassNotFoundException {
+        Class<?> netd = loader.loadClass("com.miui.powerkeeper.utils.NetdExecutor");
+        Method method;
+        try {
+            method = netd.getDeclaredMethod("setGmsDnsBlockerState", int.class, boolean.class);
+        } catch (NoSuchMethodException unavailable) {
+            log(Log.INFO, TAG, "NetdExecutor GMS DNS UID API absent; retaining OEM behavior");
+            return;
+        }
+        if (!Modifier.isStatic(method.getModifiers()) || method.getReturnType() != void.class) {
+            log(Log.INFO, TAG, "NetdExecutor GMS DNS UID signature mismatched; skipping");
+            return;
+        }
+        Utils.evaluate(hook(method), h -> setHookId(h, "NetdExecutor.setGmsDnsBlockerState"))
+                .intercept(chain -> {
+                    var args = chain.getArgs().toArray();
+                    int uid = verifiedDnsGmsUid();
+                    if (uid >= 10000 && args.length == 2 &&
+                            args[0] instanceof Integer && args[1] instanceof Boolean &&
+                            ((Integer) args[0]).intValue() == uid &&
+                            ((Boolean) args[1]).booleanValue()) {
+                        args[1] = Boolean.FALSE;
+                        return chain.proceed(args);
+                    }
+                    return chain.proceed();
+                });
+        deoptimize(method);
+        log(Log.INFO, TAG, "GMS DNS UID hook installed; exact APK and live UID required at runtime");
     }
 
     private void hookGlobalFeatureConfigureHelper(ClassLoader classLoader)
