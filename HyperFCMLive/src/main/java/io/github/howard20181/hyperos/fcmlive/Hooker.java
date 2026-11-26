@@ -535,6 +535,19 @@ public class Hooker extends XposedModule {
                 });
         deoptimize(method);
         log(Log.INFO, TAG, "GMS DNS UID hook installed; exact APK and live UID required at runtime");
+        // If a deny was installed before the LSPosed callback, the hook alone
+        // cannot erase it. Where the app is already attached and the OEM APK
+        // fingerprint + dynamic GMS UID are verified, call the same OEM API
+        // exactly once with allow (never clear unrelated UIDs).
+        int verifiedUid = verifiedDnsGmsUid();
+        if (verifiedUid >= 10000) {
+            try {
+                method.invoke(null, verifiedUid, Boolean.FALSE);
+                log(Log.INFO, TAG, "Verified GMS UID DNS allow initialized");
+            } catch (Throwable error) {
+                log(Log.WARN, TAG, "GMS UID DNS initial allow unsupported; retain OEM state", error);
+            }
+        }
     }
 
     private void hookGlobalFeatureConfigureHelper(ClassLoader classLoader)
